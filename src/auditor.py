@@ -10,9 +10,7 @@ Claude API 없이도 정상 동작해야 하므로(키가 없다고 데이터 �
 호출부에서 None을 "감사관 기능 꺼짐"으로 처리한다.
 """
 
-import os
-
-import streamlit as st
+import runtime_config
 
 MODEL = "claude-sonnet-5"
 
@@ -35,12 +33,7 @@ def _get_client():
     except ImportError:
         return None
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        try:
-            api_key = st.secrets.get("ANTHROPIC_API_KEY")
-        except Exception:
-            api_key = None
+    api_key = runtime_config.get("ANTHROPIC_API_KEY")
     if not api_key:
         return None
 

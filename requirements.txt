@@ -18,3 +18,6 @@ joblib>=1.4
 # --- Claude API 연동 (AI 감사관 기능) ---
 anthropic>=0.40
 python-dotenv>=1.0
+
+# --- GitHub 자동 백업 (선택 기능, 앱 안 '설정' 화면에서 토큰 입력) ---
+requests>=2.32

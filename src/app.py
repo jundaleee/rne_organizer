@@ -19,9 +19,11 @@ import pandas as pd
 import streamlit as st
 
 import auditor
-import git_log
+import github_sync
+import local_log
 import paths
 import predict as predict_mod
+import runtime_config
 from state import (
     LOG_COLUMNS,
     MARINADE_KEY,
@@ -83,10 +85,24 @@ def render_sidebar():
             st.rerun()
 
     st.sidebar.divider()
+    settings_active = st.session_state.view == "settings"
+    if st.sidebar.button(
+        "⚙️  설정",
+        key="nav_settings",
+        use_container_width=True,
+        type="primary" if settings_active else "secondary",
+    ):
+        go_view("settings")
+        st.rerun()
+
     if auditor.is_configured():
         st.sidebar.success("🔎 AI 감사관 켜짐")
     else:
-        st.sidebar.caption("🔎 AI 감사관 꺼짐 (API 키 미설정)")
+        st.sidebar.caption("🔎 AI 감사관 꺼짐")
+    if github_sync.is_configured():
+        st.sidebar.success("🔗 GitHub 백업 켜짐")
+    else:
+        st.sidebar.caption("🔗 GitHub 백업 꺼짐")
 
 
 # ---------- 홈 ----------
@@ -221,15 +237,21 @@ def render_entry():
             if auditor_note:
                 row["auditor_note"] = auditor_note
 
-        git_log.append_row(paths.SAMPLES_LOG_CSV, LOG_COLUMNS, row)
-        commit_hash = git_log.try_git_commit(
-            paths.REPO_ROOT, [paths.SAMPLES_LOG_CSV], f"data: {sample_id} 입력 ({member})"
-        )
+        local_log.append_row(paths.SAMPLES_LOG_CSV, LOG_COLUMNS, row)
+
+        backup_note = None
+        if github_sync.is_configured():
+            ok, info = github_sync.push_file(
+                "data/processed/samples_log.csv",
+                paths.SAMPLES_LOG_CSV,
+                f"data: {sample_id} 입력 ({member})",
+            )
+            backup_note = f"GitHub 백업 완료 (commit {info})" if ok else f"GitHub 백업 실패: {info}"
 
         msg = f"{sample_id} 저장 완료 (DDI = {ddi})"
-        if commit_hash:
-            msg += f" · commit {commit_hash}"
         st.success(msg)
+        if backup_note:
+            (st.caption if backup_note.startswith("GitHub 백업 완료") else st.warning)(backup_note)
         if auditor_note:
             st.info(f"🔎 AI 감사관: {auditor_note}")
 
@@ -345,15 +367,83 @@ def render_team():
         st.dataframe(counts, use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("최근 git 커밋")
-    commits = git_log.recent_commits(paths.REPO_ROOT, n=15)
-    if commits:
-        st.dataframe(pd.DataFrame(commits), use_container_width=True, hide_index=True)
+    st.subheader("최근 GitHub 백업 기록")
+    if github_sync.is_configured():
+        commits = github_sync.list_recent_commits("data/processed/samples_log.csv", n=15)
+        if commits:
+            st.dataframe(pd.DataFrame(commits), use_container_width=True, hide_index=True)
+        else:
+            st.caption("아직 백업 기록이 없다.")
     else:
-        st.caption("커밋 기록을 불러올 수 없다 (git 저장소가 아니거나, push 권한이 없는 배포 환경일 수 있다).")
+        st.caption("GitHub 연동이 설정되지 않았다. '⚙️ 설정'에서 켤 수 있다 (선택 사항, 없어도 앱은 정상 동작).")
 
     st.divider()
     render_debug_helper()
+
+
+# ---------- 설정 ----------
+
+def render_settings():
+    st.title("⚙️ 설정")
+    st.caption(
+        "여기서 저장한 값은 이 앱을 쓰는 팀원 전체가 공유해서 쓴다. "
+        "⚠️ 이 앱엔 로그인이 없어서 링크를 아는 사람은 누구나 이 값을 바꿀 수 있다 — 팀 내부에서만 링크를 공유할 것."
+    )
+
+    st.subheader("Claude API 키")
+    st.caption("AI 감사관(데이터 무결성 판정, 디버깅 도우미) 기능에 필요하다. console.anthropic.com 에서 발급.")
+    st.write("✅ 설정됨" if auditor.is_configured() else "❌ 미설정 — AI 감사관 기능이 꺼져 있다")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        new_claude_key = st.text_input("Claude API Key 입력/변경", type="password", key="settings_claude_key")
+    with c2:
+        st.write("")
+        st.write("")
+        if st.button("삭제", key="clear_claude_key", use_container_width=True):
+            runtime_config.clear("ANTHROPIC_API_KEY")
+            st.rerun()
+    if st.button("Claude API 키 저장", type="primary"):
+        if new_claude_key:
+            runtime_config.save({"ANTHROPIC_API_KEY": new_claude_key})
+            st.success("저장 완료.")
+            st.rerun()
+        else:
+            st.error("빈 값은 저장할 수 없다.")
+
+    st.divider()
+    st.subheader("GitHub 자동 백업 (선택)")
+    st.caption(
+        "설정하면 데이터를 입력할 때마다 GitHub 저장소에도 자동으로 커밋된다. "
+        "없어도 앱은 정상 동작하지만, 앱이 재배포되면 그 사이 입력한 데이터가 사라질 수 있다."
+    )
+    st.write("✅ 설정됨" if github_sync.is_configured() else "❌ 미설정")
+
+    repo_value = st.text_input(
+        "GitHub 저장소 (owner/repo)", value=runtime_config.get("GITHUB_REPO", "jundaleee/rne_organizer") or ""
+    )
+    branch_value = st.text_input("브랜치", value=runtime_config.get("GITHUB_BRANCH", "main") or "")
+    c3, c4 = st.columns([3, 1])
+    with c3:
+        new_token = st.text_input(
+            "GitHub Personal Access Token 입력/변경",
+            type="password",
+            key="settings_gh_token",
+            help="github.com/settings/tokens 에서 'repo' 권한(또는 이 저장소에 대한 Contents 읽기/쓰기 권한)으로 발급",
+        )
+    with c4:
+        st.write("")
+        st.write("")
+        if st.button("삭제", key="clear_gh_token", use_container_width=True):
+            runtime_config.clear("GITHUB_TOKEN")
+            st.rerun()
+
+    if st.button("GitHub 연동 저장", type="primary"):
+        values = {"GITHUB_REPO": repo_value, "GITHUB_BRANCH": branch_value}
+        if new_token:
+            values["GITHUB_TOKEN"] = new_token
+        runtime_config.save(values)
+        st.success("저장 완료.")
+        st.rerun()
 
 
 # ---------- 라우터 ----------
@@ -374,6 +464,8 @@ def main():
         render_docs()
     elif view == "team":
         render_team()
+    elif view == "settings":
+        render_settings()
 
 
 if __name__ == "__main__":

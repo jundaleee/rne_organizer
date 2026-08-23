@@ -72,12 +72,15 @@ python scripts/build_final_model.py
 링크가 생성된다 (노트북에서 별도 설치 없이 브라우저만 있으면 접속 가능).
 
 1. share.streamlit.io에서 GitHub 계정으로 로그인 → 이 저장소 선택 → Main file path:
-   `src/app.py`
-2. **Settings → Secrets**에 `.streamlit/secrets.toml.example` 내용을 참고해 실제 값을 붙여넣는다
-   (`ANTHROPIC_API_KEY` 등). 이 값은 GitHub에 올라가지 않고 Streamlit Cloud에만 저장된다.
-3. 배포되면 생기는 `https://xxxx.streamlit.app` 링크를 팀 단톡방에 공유한다.
+   `src/app.py` → **Deploy**
+2. 배포되면 생기는 `https://xxxx.streamlit.app` 링크를 열고, 왼쪽 사이드바
+   **`⚙️ 설정`**에서 Claude API 키(필수, AI 감사관용)와 GitHub 백업 토큰(선택,
+   `docs/app_guide.md` 참고)을 입력·저장한다. **딱 한 번만** 하면 팀 전체가 공유해서 쓴다.
+3. 링크를 팀 단톡방에 공유한다.
 
-> Claude API 키가 아직 없어도 앱 자체는 정상 동작한다(AI 감사관 기능만 꺼진 채로 표시됨).
+Streamlit Cloud의 Secrets 패널은 안 건드려도 된다 — 위 2번 과정이 그 역할을 대신한다.
+(굳이 배포 플랫폼 쪽에 미리 넣어두고 싶다면 `.streamlit/secrets.toml.example` 참고.)
+Claude API 키를 아직 안 넣었어도 앱 자체는 정상 동작한다(AI 감사관 기능만 꺼진 채로 표시됨).
 
 ## 중요: 현재 상태
 
