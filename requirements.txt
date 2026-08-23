@@ -1,0 +1,20 @@
+# 4개 계정(팀원) 전부 동일 버전을 쓸 것 — 버전 차이가 재현성 위기의 원인이 될 수 있음
+# (2026-08 기준 최신 안정 버전으로 시작. 팀 전원 설치 성공 확인 후
+#  `pip freeze > requirements.txt` 로 실제 설치된 정확한 버전으로 한 번 덮어써서 고정할 것)
+
+# --- ML 파이프라인 (기존 검증 완료 버전) ---
+xgboost==3.3.0
+pandas==3.0.3
+numpy==2.4.4
+scikit-learn==1.9.0
+scipy==1.18.0
+shap>=0.46
+
+# --- 총괄 앱 ---
+streamlit>=1.38
+plotly>=5.24
+joblib>=1.4
+
+# --- Claude API 연동 (AI 감사관 기능) ---
+anthropic>=0.40
+python-dotenv>=1.0
