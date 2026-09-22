@@ -124,6 +124,11 @@ def render_home():
             st.metric(group, f"{done} / {target}")
             st.progress(min(done / target, 1.0) if target else 0.0)
 
+    if not log_df.empty:
+        pending_n = int((log_df["qc_flag"] == "pending_qpcr").sum())
+        if pending_n:
+            st.caption(f"⏳ qPCR 대기중인 시료: {pending_n}개 (NanoDrop만 입력된 상태 — 같은 시료 ID로 다시 입력하면 이어짐)")
+
     st.divider()
     st.subheader("최근 입력 기록")
     if log_df.empty:
@@ -160,7 +165,10 @@ def render_saturation_checker():
 
 def render_entry():
     st.title("🧪 데이터 입력")
-    st.caption("측정한 NanoDrop·qPCR 수치를 입력하면 DDI가 자동 계산되고 AI 감사관이 즉시 판정한다.")
+    st.caption(
+        "측정한 NanoDrop 수치를 입력하면 AI 감사관이 즉시 판정한다. "
+        "qPCR은 지금 당장 안 해도 된다 — 나중에 같은 시료 ID로 다시 들어와서 Ct 값만 추가로 입력하면 DDI가 계산된다."
+    )
 
     if not auditor.is_configured():
         st.warning("Claude API 키가 설정되지 않아 AI 감사관 기능이 꺼져 있다. 데이터 입력 자체는 정상 동작한다.")
@@ -188,15 +196,19 @@ def render_entry():
         with n3:
             purity_230 = st.number_input("A260/230 *", min_value=0.0, value=2.1, step=0.01)
 
-        st.markdown("**qPCR**")
+        st.markdown("**qPCR (지금 없으면 비워두고 넘어가도 된다)**")
+        qpcr_pending = st.checkbox("qPCR 아직 안 함 — NanoDrop만 먼저 저장", value=True)
         q1, q2, q3 = st.columns(3)
         with q1:
-            ct_100 = st.number_input("Ct_100 *", min_value=0.0, max_value=45.0, value=18.0, step=0.01)
+            ct_100 = st.number_input(
+                "Ct_100", min_value=0.0, max_value=45.0, value=18.0, step=0.01, disabled=qpcr_pending
+            )
         with q2:
-            undetermined = st.checkbox("Ct_600 미검출(Undetermined)")
+            undetermined = st.checkbox("Ct_600 미검출(Undetermined)", disabled=qpcr_pending)
         with q3:
             ct_600 = st.number_input(
-                "Ct_600", min_value=0.0, max_value=45.0, value=18.5, step=0.01, disabled=undetermined
+                "Ct_600", min_value=0.0, max_value=45.0, value=18.5, step=0.01,
+                disabled=qpcr_pending or undetermined,
             )
 
         submitted = st.form_submit_button("제출", use_container_width=True)
@@ -206,9 +218,14 @@ def render_entry():
             st.error("시료 ID와 담당자는 필수다.")
             return
 
-        actual_ct600 = UNDETERMINED_CT if undetermined else ct_600
-        ddi = round(actual_ct600 - ct_100, 3)
-        qc_flag = "undetermined" if undetermined else "ok"
+        if qpcr_pending:
+            actual_ct100, actual_ct600, ddi = "", "", ""
+            qc_flag = "pending_qpcr"
+        else:
+            actual_ct100 = ct_100
+            actual_ct600 = UNDETERMINED_CT if undetermined else ct_600
+            ddi = round(actual_ct600 - actual_ct100, 3)
+            qc_flag = "undetermined" if undetermined else "ok"
 
         row = {
             "sample_id": sample_id,
@@ -218,7 +235,7 @@ def render_entry():
             "marinade": MARINADE_KEY[marinade_label],
             "temp_c": temp_c,
             "time_min": time_min,
-            "Ct_100": ct_100,
+            "Ct_100": actual_ct100,
             "Ct_600": actual_ct600,
             "DDI": ddi,
             "DNA_conc": conc,
@@ -248,7 +265,10 @@ def render_entry():
             )
             backup_note = f"GitHub 백업 완료 (commit {info})" if ok else f"GitHub 백업 실패: {info}"
 
-        msg = f"{sample_id} 저장 완료 (DDI = {ddi})"
+        if qpcr_pending:
+            msg = f"{sample_id} 저장 완료 (NanoDrop만, qPCR 대기중 — 나중에 같은 시료 ID로 다시 입력)"
+        else:
+            msg = f"{sample_id} 저장 완료 (DDI = {ddi})"
         st.success(msg)
         if backup_note:
             (st.caption if backup_note.startswith("GitHub 백업 완료") else st.warning)(backup_note)
